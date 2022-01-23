@@ -5,18 +5,19 @@ import GeometricControl.pure_pursuit as pp
 
 client = carla.Client('localhost', 2000)
 world = client.load_world('Town04')
+
 settings = world.get_settings()
 settings.synchronous_mode = True
+settings.fixed_delta_seconds = 0.05
 world.apply_settings(settings)
+
 carla_map = world.get_map()
-
-
 
 WAYPOINT_DIST = 1
 # This list of roads corresponds to the 8-shaped loop
-TRACK_ROADS = [761, 36, 862, 35, 43, 266, 42, 50, 1174, 49, 902, 48, 775, 47, 1073, 46, 144, 45, 6,
- 41, 1400, 40, 1185, 39, 1092, 38, 1601, 37]
-TRACK_ROADS = [38]
+ALL_TRACK_ROADS = [36, 862, 35, 43, 266, 42, 50, 1174, 49, 902, 48, 775, 47, 1073, 46, 144, 45, 6,
+ 41] #, 1400, 40, 1185, 39, 1092, 38, 1601, 37, 761]
+TRACK_ROADS = [36]
 waypoints =[w for w in carla_map.generate_waypoints(WAYPOINT_DIST)
             if w.road_id in TRACK_ROADS and w.lane_id==4]
 
@@ -46,23 +47,59 @@ for sublist in static_waypoints:
 """
 static_items = []
 
-start_point =0
-navigation_waypoints = waypoints[start_point:]
-navigation_waypoints.reverse()
+
+navigation_waypoints = [w.transform.location for w in waypoints]
+
+for road_num in ALL_TRACK_ROADS[1:]:
+    road_wp = [w for w in carla_map.generate_waypoints(WAYPOINT_DIST)
+            if w.road_id==road_num and w.lane_id==4]
+    road_wp = [w.transform.location for w in road_wp]
+    last_nav_point = navigation_waypoints[-1]
+    if last_nav_point.distance(road_wp[-1]) < last_nav_point.distance(road_wp[0]):
+        road_wp.reverse()
+    navigation_waypoints = navigation_waypoints + road_wp
+
+
 blueprint = world.get_blueprint_library().find('vehicle.audi.tt')
 blueprint.set_attribute('color', '0,85,155')
-vehicle_start = navigation_waypoints[0].transform
+vehicle_start = waypoints[0].transform
 vehicle_start.location.z += 0.1 # The waypoint is *below* the road?! This avoids a collision
+vehicle_start.location.x += 3*(np.random.rand()-0.5)
+vehicle_start.location.y += 3*(np.random.rand()-0.5)
+original_yaw = vehicle_start.rotation.yaw
+vehicle_start_rotation = carla.Rotation(yaw=original_yaw + 80*(np.random.rand()-0.5))
+vehicle_start.rotation = vehicle_start_rotation
 vehicle = world.spawn_actor(blueprint, vehicle_start)
+
 world.get_spectator().set_transform(vehicle_start)
 
-# breakpoint()
-control = pp.PurePursuit(vehicle, navigation_waypoints)
+control = pp.PurePursuit(vehicle, navigation_waypoints, world)
 
+transform = vehicle.get_transform()
+location = transform.location
+
+world.tick()
 # breakpoint()
+
+i = 1
+
+world.tick()
 while True:
     try:
         control.update()
+        i += 1
+        if i%20 == 0:
+            # speed = vehicle.get_velocity()
+            # speed = speed.length()
+            # print(f"speed = {speed*3.6:.2f} kph")
+            # transform = vehicle.get_transform()
+            # location = transform.location
+            # print(f"LOCATION: x = {location.x}  y = {location.y}  z = {location.z}")
+            # heading = transform.rotation.get_forward_vector()
+            # print(f"HEADING: x = {heading.x}  y = {heading.y}  z = {heading.z}")
+            # print(f"HEADING: yaw = {transform.rotation.yaw} \n")
+            # dists = [location.distance(w) for w in navigation_waypoints]
+            # print(f"{dists} \n\n ")
         world.tick()
         continue
     except KeyboardInterrupt:
@@ -73,23 +110,3 @@ while True:
         break
 
 
-def send_control_command(client, throttle, steer, brake,
-                         hand_brake=False, reverse=False):
-    """
-    throttle in [0,1]
-    steer in [-1,1]
-    brake in [0,1]
-    Automatic control of vehicle. (manual_gear_shift is False)
-    """
-    control = VehicleControl()
-    # Clamp all values within their limits
-    steer = np.fmax(np.fmin(steer, 1.0), -1.0)
-    throttle = np.fmax(np.fmin(throttle, 1.0), 0)
-    brake = np.fmax(np.fmin(brake, 1.0), 0)
-
-    control.steer = steer
-    control.throttle = throttle
-    control.brake = brake
-    control.hand_brake = hand_brake
-    control.reverse = reverse
-    client.send_control(control)
