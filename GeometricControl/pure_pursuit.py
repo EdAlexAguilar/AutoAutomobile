@@ -5,7 +5,7 @@ class PurePursuit():
     """
     Waypoints are ordered (carla.Waypoint objects)
     """
-    def __init__(self, vehicle, waypoints, world, kpp=5, target_speed_kph=40):
+    def __init__(self, vehicle, waypoints, world, kpp=3, target_speed_kph=40):
         self.vehicle = vehicle
         self.waypoints = waypoints # list of Vector3D
         self.world = world # carla.world
@@ -53,6 +53,7 @@ class PurePursuit():
         sin_alpha = sin_alpha.length() * sign_sin_alpha
         delta = - np.arctan(4 * self.half_length * sin_alpha / v_target_length)
         delta *= 2 / np.pi
+        delta *= 2
 
         """
         Helpful Drawing of Lines

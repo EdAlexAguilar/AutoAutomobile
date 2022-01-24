@@ -45,17 +45,21 @@ def main():
     world.tick()
     vehicles, controllers = [], []
     num_vehicles = 5
-    spawn_every = 60
+    spawn_every = 80
     t = 0
     while True:
         try:
             t += 1
             for c in controllers:
                 c.update()
-            if t%spawn_every==1 & len(vehicles)<num_vehicles:
-                ego = spawn_vehicle(ego_spawn_transform)
-                vehicles.append(ego)
-                controllers.append(pp.PurePursuit(ego, navigation_waypoints, world))
+            if t%spawn_every==1 and len(vehicles)<num_vehicles:
+                try:
+                    ego = spawn_vehicle(ego_spawn_transform)
+                    vehicles.append(ego)
+                    controllers.append(pp.PurePursuit(ego, navigation_waypoints, world))
+                    print(len(vehicles))
+                except:
+                    pass
             world.tick()
             continue
         except KeyboardInterrupt:
