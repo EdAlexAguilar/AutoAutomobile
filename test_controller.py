@@ -54,6 +54,7 @@ def main():
                 c.update()
             if t%spawn_every==1 & len(vehicles)<num_vehicles:
                 ego = spawn_vehicle(ego_spawn_transform)
+                vehicles.append(ego)
                 controllers.append(pp.PurePursuit(ego, navigation_waypoints, world))
             world.tick()
             continue

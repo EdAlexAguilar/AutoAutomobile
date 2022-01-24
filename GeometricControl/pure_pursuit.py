@@ -5,7 +5,7 @@ class PurePursuit():
     """
     Waypoints are ordered (carla.Waypoint objects)
     """
-    def __init__(self, vehicle, waypoints, world, kpp=5, target_speed_kph=45):
+    def __init__(self, vehicle, waypoints, world, kpp=5, target_speed_kph=40):
         self.vehicle = vehicle
         self.waypoints = waypoints # list of Vector3D
         self.world = world # carla.world
