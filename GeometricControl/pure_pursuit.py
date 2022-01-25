@@ -5,14 +5,20 @@ class PurePursuit():
     """
     Waypoints are ordered (carla.Waypoint objects)
     """
-    def __init__(self, vehicle, waypoints, world, kpp=3, target_speed_kph=40):
+    def __init__(self, vehicle, waypoints, world, kv=3, kc=10, delta_mul=1, target_speed_kph=15, draw=True):
         self.vehicle = vehicle
         self.waypoints = waypoints # list of Vector3D
+        self.historical_waypoints = waypoints # list of all waypoints ever given
         self.world = world # carla.world
-        self.kpp = kpp
+        self.kv = kv
+        self.kc = kc
         self.target_speed_kph = target_speed_kph
         self.half_length = vehicle.bounding_box.extent.x  - 0.5 # half the vehicle's length correction to put in axle
-        self.draw_waypoints()
+        self.draw = draw
+        self.delta_mul = delta_mul
+        if draw:
+            self.draw_waypoints()
+        self.cumulative_error = 0
 
     def draw_waypoints(self):
         for i in range(len(self.waypoints)-1):
@@ -20,6 +26,7 @@ class PurePursuit():
 
     def append_waypoints(self, new_waypoints):
         self.waypoints = self.waypoints + new_waypoints
+        self.historical_waypoints = self.historical_waypoints + new_waypoints
 
     def longitudinal_control(self):
         # ridiculous speed controller
@@ -34,7 +41,7 @@ class PurePursuit():
     def lateral_control(self):
         speed = self.vehicle.get_velocity()
         speed = speed.length()
-        lookahead = self.kpp * speed
+        lookahead = self.kv * speed + self.kc
 
         transform = self.vehicle.get_transform()
         location = transform.location
@@ -53,17 +60,20 @@ class PurePursuit():
         sin_alpha = sin_alpha.length() * sign_sin_alpha
         delta = - np.arctan(4 * self.half_length * sin_alpha / v_target_length)
         delta *= 2 / np.pi
-        delta *= 2
+        delta *= self.delta_mul
 
-        """
-        Helpful Drawing of Lines
-        """
-        higher_rear_axle = rear_axle_loc
-        higher_rear_axle.z += 0.4
-        self.world.debug.draw_arrow(higher_rear_axle, self.waypoints[0],
-                                    thickness=0.2, color=carla.Color(0, 0, 50), life_time=0.08)
-        self.world.debug.draw_point(rear_axle_loc,
-                                    size=0.05, color=carla.Color(0, 50, 50, 50), life_time=0)
+        closest_historical = np.array([rear_axle_loc.distance(w) for w in self.historical_waypoints])
+        closest_historical = closest_historical.argmin()
+        self.cumulative_error += rear_axle_loc.distance(self.historical_waypoints[closest_historical])
+        if self.draw:
+            higher_rear_axle = rear_axle_loc
+            higher_rear_axle.z += 0.4
+            self.world.debug.draw_arrow(higher_rear_axle, self.waypoints[0],
+                                        thickness=0.2, color=carla.Color(0, 0, 50), life_time=0.08)
+            #self.world.debug.draw_point(rear_axle_loc,
+            #                           size=0.05, color=carla.Color(240, 100, 200, 50), life_time=0)
+            self.world.debug.draw_line(higher_rear_axle, self.historical_waypoints[closest_historical],
+                                       color=carla.Color(30, 10, 0), life_time=1)
         return delta
 
     def update(self):
