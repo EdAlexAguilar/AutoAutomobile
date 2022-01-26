@@ -111,7 +111,7 @@ if __name__ == "__main__":
     vcd = [(vel, cons, deltmu) for vel in np.linspace(2, 6, 4) for cons in np.linspace(0, 10, 3) for deltmu in np.linspace(2, 3, 4)]
     results = {}
     for vel, cons, deltmu in vcd:
-        params = {'kv': vel, "kc": cons, "delta_mul" : deltmu, "target_speed_kph": 85}
+        params = {'kv': vel, "kc": cons, "delta_mul" : deltmu, "target_speed_mps": 85}
         performance = tune(num_vehicles=15, max_steps=1800, **params)
         results[(vel,cons,deltmu)] = performance
         print(f"kv= {vel} kc= {cons} deltmu= {deltmu} travelled= {performance[0]:.2f}  abs_error= {performance[1]:.2f}\n")
