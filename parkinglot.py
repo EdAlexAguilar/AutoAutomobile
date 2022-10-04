@@ -22,6 +22,7 @@ x = 276.470  y = -190.128  z = 0.290
 """
 import carla
 import numpy as np
+from utils.carla_utils import spawn_vehicle, spectator_camera_transform
 
 client = carla.Client('localhost', 2000)
 world = client.load_world('Town04')
@@ -32,37 +33,6 @@ settings.fixed_delta_seconds = 0.05
 world.apply_settings(settings)
 carla_map = world.get_map()
 
-def spawn_vehicle(world, spawn_transform=None, vehicle_type=None, vehicle_color=None):
-    """
-    :param spawn_transform: if None, will randomize
-    :param vehicle_type: if None, will randomize
-    :param vehicle_color: if None, will randomize
-    :return: carla vehicle object
-    """
-    if vehicle_type is None:
-        vehicle_names = [v.id[8:] for v in world.get_blueprint_library().filter("vehicle")]
-        vehicle_type = np.random.choice(vehicle_names)
-    blueprint = world.get_blueprint_library().find("vehicle."+vehicle_type)
-    if blueprint.has_attribute('color'):
-        if vehicle_color is None:
-            vehicle_color = f'{np.random.choice(256)},{np.random.choice(256)},{np.random.choice(256)}'
-        blueprint.set_attribute('color', vehicle_color)
-    if spawn_transform is None:
-        spawn_transform = np.random.choice(world.get_map().get_spawn_points())
-    spawn_transform.location.z += 0.1 # helps in case map starting locations are incorrect
-    vehicle = world.spawn_actor(blueprint, spawn_transform)
-    return vehicle
-
-def spectator_camera_transform(actor):
-    base_transform = actor.get_transform()
-    heading = base_transform.rotation.get_forward_vector()
-    x, y, z = base_transform.location.x, base_transform.location.y, base_transform.location.z
-    right_vec = base_transform.rotation.get_right_vector()
-    camera_location = carla.Location(x, y, z) - 8*heading #- 5*right_vec
-    camera_location.z += 5
-    pitch, yaw, roll = base_transform.rotation.pitch, base_transform.rotation.yaw, base_transform.rotation.roll
-    camera_rotation = carla.Rotation(pitch-15, yaw, roll)
-    return carla.Transform(camera_location, camera_rotation)
 
 def main(actor_list):
     world.tick()
