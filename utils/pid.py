@@ -4,11 +4,12 @@ class PID:
         Simple PID Controller class.
         Assumes steps evenly spaced (I.e. derivative denominator is constant)
         base_control is "center" guessed value
+        # todo: mechanism to keep integral term for only last N steps
         """
         self.kp = kp
         self.ki = ki
         self.kd = kd
-        self.init_control = base_control
+        self.base_control = base_control
         self.prev_error = 0
         self.integral = 0
 

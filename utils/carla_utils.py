@@ -1,4 +1,7 @@
 import carla
+import numpy as np
+IMG_FILEPATH = ''
+
 
 def spawn_vehicle(world, spawn_transform=None, vehicle_type=None, vehicle_color=None):
     """
@@ -18,6 +21,7 @@ def spawn_vehicle(world, spawn_transform=None, vehicle_type=None, vehicle_color=
     if spawn_transform is None:
         spawn_transform = np.random.choice(world.get_map().get_spawn_points())
     spawn_transform.location.z += 0.1 # helps in case map starting locations are incorrect
+    # print(f"{vehicle_type}    loc: {spawn_transform.location}")
     vehicle = world.spawn_actor(blueprint, spawn_transform)
     return vehicle
 
