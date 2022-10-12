@@ -12,14 +12,15 @@ x = 285.713  y = -172.552  z = 0.191
 PEDESTRIAN START:
 Road Id: 468   Lane Id: -1
 x = 303.319  y = -194.256  z = 0.166
-PEDESTRIAN TARGET:
-Road Id: 11    Lane Id: 1
-x = 276.470  y = -190.128  z = 0.290
+
 """
 import carla
 import numpy as np
 from utils.carla_utils import spawn_vehicle, spectator_camera_transform, spawn_rgb_sensor
+import utils.carla_utils as carla_utils
 from utils.AEB_cruise import AEBCruise
+import time
+from yolov7.main_detector import YOLODetector
 
 client = carla.Client('localhost', 2000)
 world = client.load_world('Town04')
@@ -27,8 +28,8 @@ settings = world.get_settings()
 settings.synchronous_mode = True
 settings.fixed_delta_seconds = 0.05
 world.apply_settings(settings)
-carla_map = world.get_map()
-
+# carla_map = world.get_map()
+EPISODE_LENGTH = 10  # seconds
 
 # LOCATION OF OTHER PARKED VEHICLES, JUST FOR VISUALIZATION PURPOSES
 other_parked = [(carla.Transform(carla.Location(280, -205, 0.25), carla.Rotation(0, 188, 0)),'volkswagen.t2_2021'),
@@ -53,20 +54,55 @@ clarity = {'clear': clear, 'fog': fog}
 pedestrian_blueprints = {'child': world.get_blueprint_library().find(f'walker.pedestrian.0010'),
                          'adult': world.get_blueprint_library().find(f'walker.pedestrian.0028')}
 
+# SENSOR & YOLO
+RESOLUTION = 1280
+perception_model = YOLODetector(img_size=RESOLUTION, conf_threshold=0.87)
 
+def yolo_predict(image):
+    prediction = perception_model.detect(image)
+    pred = prediction[0].detach().cpu().numpy()
+    if pred.shape[0] == 0:
+        pred = np.zeros((1, 6))
+        pred[0, -1] = -1  # to make sure that class is not accidently considered '0'
+    # Check if a pedestrian was observed or not
+    person_probs = np.array([pred[i][-2] if pred[i][-1]==0 else -1 for i in range(pred.shape[0])])
+    if 0 in pred[:,-1]:
+        return True, max(person_probs)
+    else:
+        return False, max(person_probs)
+
+# Data collection
+ego_data = {'x':[], 'y':[], 'v_x':[], 'v_y':[], 'a_x':[], 'a_y':[]}
+ped_data = {'x':[], 'y':[], 'v_x':[], 'v_y':[], 'a_x':[], 'a_y':[]}
+time_trace = []
 
 def main(actor_list):
     world.tick()
+    initial_time = world.get_snapshot().elapsed_seconds
+    simulator_time = initial_time
     ego = actor_list[0]
     ped = actor_list[1]
     # ego controller
-    ego_cruise_control = AEBCruise(ego, target_speed=7, target_yaw=90)
-    while True:
+    ego_cruise_control = AEBCruise(ego, target_speed=8, target_yaw=90)
+    carla_utils.frame_counter = -1
+    current_frame = 0
+    while (simulator_time - initial_time)<EPISODE_LENGTH:
         try:
             world.tick()
-            # accelerate(ego, 0.37)
-            ego_cruise_control.control()
-            walk(ped, 1.4)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speedes
+            # COLLECT DATA
+            simulator_time = world.get_snapshot().elapsed_seconds
+            time_trace.append(round(simulator_time-initial_time, 3))
+            update_actor_data(ego, ego_data)
+            update_actor_data(ped, ped_data)
+            # PROCESS FOR NEXT FRAME
+            while current_frame != carla_utils.frame_counter:
+                time.sleep(0.01)
+            current_frame += 1
+            cam_img = carla_utils.array_output
+            ped_in_sight, prob = yolo_predict(cam_img)
+            print(f'Pedestrian In Sight: {ped_in_sight}   Prob: {prob}')
+            ego_cruise_control.control(emergency_brake=ped_in_sight)
+            walk(ped, 1.4)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speed
             world.get_spectator().set_transform(spectator_camera_transform(ego))
             # print(f'Ego Speed: {ego.get_velocity().length():.2f} m/s    Yaw: {ego.get_transform().rotation.yaw:.2f} ')
             continue
@@ -77,6 +113,14 @@ def main(actor_list):
             client.reload_world()
             break
 
+
+def update_actor_data(actor, actor_data):
+    actor_data['x'].append(actor.get_location().x)
+    actor_data['y'].append(actor.get_location().y)
+    actor_data['v_x'].append(actor.get_velocity().x)
+    actor_data['v_y'].append(actor.get_velocity().y)
+    actor_data['a_x'].append(actor.get_acceleration().x)
+    actor_data['a_y'].append(actor.get_acceleration().y)
 
 def walk(pedestrian, speed):
     control_command = carla.WalkerControl()
@@ -105,7 +149,7 @@ if __name__ == "__main__":
     # Pedestrian
     #ped_init = carla.Transform(carla.Location(302, -194, 0.2),
     #                           carla.Rotation(0,180,0))
-    ped_init = carla.Transform(carla.Location(297, -194, 0.25),
+    ped_init = carla.Transform(carla.Location(296, -194, 0.25),  # 297
                                carla.Rotation(0,180,0))
     pedestrian = world.spawn_actor(pedestrian_blueprints[PEDESTRIAN], ped_init)
     actors.append(pedestrian)
@@ -116,6 +160,8 @@ if __name__ == "__main__":
     world.tick()
     # breakpoint()
     world.get_spectator().set_transform(spectator_camera_transform(ego))
+    # RGB Sensor
+    camera = spawn_rgb_sensor(world, ego, resolution=RESOLUTION)
     main(actors)  # actor[0] = ego ; actor[1] = pedestrian
 
 

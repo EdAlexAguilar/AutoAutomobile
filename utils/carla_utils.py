@@ -1,7 +1,10 @@
 import carla
 import numpy as np
-IMG_FILEPATH = ''
+import datetime
 
+array_output = -1
+frame_counter = -1
+IMG_FILEPATH = 'images/'
 
 def spawn_vehicle(world, spawn_transform=None, vehicle_type=None, vehicle_color=None):
     """
@@ -57,13 +60,24 @@ def spawn_rgb_sensor(world, actor, resolution=1280, height_offset=0.2, pitch=-15
     camera_transform = carla.Transform(carla.Location(length/8, 0, height + height_offset),
                                        carla.Rotation(pitch,0,0))
     camera = world.spawn_actor(blueprint, camera_transform, attach_to=actor)
-    camera.listen(lambda data: sensor_callback(data, filepath))
+    # camera.listen(lambda data: sensor_save_callback(data, filepath))  # save callback
+    camera.listen(lambda data: sensor_array_callback(data))
     return camera
 
-def sensor_callback(sensor_data, filepath):
-    global SAVE_IMG
-    if SAVE_IMG:
-        exp_time = datetime.datetime.now()
-        exp_time_str = f'{exp_time.month}-{exp_time.day}_{exp_time.hour}{exp_time.minute}_{exp_time.second}-{exp_time.microsecond//1000}'
-        sensor_data.save_to_disk(f'{filepath}test_{exp_time_str}')
-        sensor_queue.put(sensor_data.frame)
+
+def sensor_array_callback(sensor_data):
+    global array_output
+    global frame_counter
+    img_arr = np.ndarray(shape=(sensor_data.height, sensor_data.width, 4), dtype=np.uint8,
+                         buffer=sensor_data.raw_data)  # RGBA format
+    array_output = img_arr[:,:,:3] # keep only RGB
+    frame_counter += 1
+
+
+def sensor_save_callback(sensor_data, filepath):
+    exp_time = datetime.datetime.now()
+    exp_time_str = f'{exp_time.month}-{exp_time.day}_{exp_time.hour}{exp_time.minute}_{exp_time.second}-{exp_time.microsecond//1000}'
+    sensor_data.save_to_disk(f'{filepath}test_{exp_time_str}')
+    # img_arr = np.ndarray(shape=(sensor_data.height, sensor_data.width, 4), dtype=np.uint8, buffer=sensor_data.raw_data)  # RGBA format
+    # img_arr = img_arr[:,:,:3] # keep only RGB
+    # sensor_queue.put(sensor_data.frame)
