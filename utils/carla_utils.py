@@ -5,6 +5,7 @@ import datetime
 array_output = -1
 frame_counter = -1
 IMG_FILEPATH = 'images/'
+detected_crash = False
 
 def spawn_vehicle(world, spawn_transform=None, vehicle_type=None, vehicle_color=None):
     """
@@ -81,3 +82,14 @@ def sensor_save_callback(sensor_data, filepath):
     # img_arr = np.ndarray(shape=(sensor_data.height, sensor_data.width, 4), dtype=np.uint8, buffer=sensor_data.raw_data)  # RGBA format
     # img_arr = img_arr[:,:,:3] # keep only RGB
     # sensor_queue.put(sensor_data.frame)
+
+
+def spawn_collision_sensor(world, actor):
+    sensor_bp = world.get_blueprint_library().find('sensor.other.collision')
+    sensor = world.spawn_actor(sensor_bp, carla.Transform(), attach_to=actor)
+    sensor.listen(lambda event: crash_detector_callback(event))
+    return sensor
+
+def crash_detector_callback(event):
+    global detected_crash
+    detected_crash = True
