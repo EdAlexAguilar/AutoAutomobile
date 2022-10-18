@@ -1,6 +1,7 @@
 import carla
 import numpy as np
 import datetime
+import cv2
 
 array_output = -1
 frame_counter = -1
@@ -39,8 +40,8 @@ def spectator_camera_transform(actor):
     heading = base_transform.rotation.get_forward_vector()
     x, y, z = base_transform.location.x, base_transform.location.y, base_transform.location.z
     right_vec = base_transform.rotation.get_right_vector()
-    camera_location = carla.Location(x, y, z) - 8*heading #- 5*right_vec
-    camera_location.z += 5
+    camera_location = carla.Location(x, y, z)  #- 8*heading #- 5*right_vec
+    camera_location.z += 2
     pitch, yaw, roll = base_transform.rotation.pitch, base_transform.rotation.yaw, base_transform.rotation.roll
     camera_rotation = carla.Rotation(pitch-15, yaw, roll)
     return carla.Transform(camera_location, camera_rotation)
@@ -72,6 +73,7 @@ def sensor_array_callback(sensor_data):
     img_arr = np.ndarray(shape=(sensor_data.height, sensor_data.width, 4), dtype=np.uint8,
                          buffer=sensor_data.raw_data)  # RGBA format
     array_output = img_arr[:,:,:3] # keep only RGB
+    array_output = cv2.cvtColor(array_output, cv2.COLOR_BGR2RGB)
     frame_counter += 1
 
 

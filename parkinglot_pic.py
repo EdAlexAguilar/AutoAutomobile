@@ -1,19 +1,3 @@
-"""
-# Map 4
-# Road 11, 27, 47
-
-START EGO:
-Road Id: 26   Lane Id: 1
-x = 284.636  y = -242.797  z = 0.067
-EGO TARGET:
-Road Id: 11  Lane Id: 1
-x = 285.713  y = -172.552  z = 0.191
-
-PEDESTRIAN START:
-Road Id: 468   Lane Id: -1
-x = 303.319  y = -194.256  z = 0.166
-
-"""
 import carla
 import numpy as np
 from utils.carla_utils import spawn_vehicle, spectator_camera_transform, spawn_rgb_sensor, spawn_collision_sensor
@@ -23,12 +7,14 @@ import time
 from yolov7.main_detector import YOLODetector
 import csv
 import itertools
+from PIL import Image
+
 
 client = carla.Client('localhost', 2000)
 world = client.load_world('Town04')
 settings = world.get_settings()
 settings.synchronous_mode = True
-settings.fixed_delta_seconds = 0.04
+settings.fixed_delta_seconds = 0.05
 world.apply_settings(settings)
 # carla_map = world.get_map()
 # EPISODE ENDING CONDITIONS
@@ -40,32 +26,34 @@ X_OFFSET = 286
 Y_OFFSET = -193.5
 
 # LOCATION OF OTHER PARKED VEHICLES, JUST FOR VISUALIZATION PURPOSES
-other_parked = [(carla.Transform(carla.Location(280, -205, 0.25), carla.Rotation(0, 188, 0)),'volkswagen.t2_2021'),
-                (carla.Transform(carla.Location(290.2, -201.5, 0.22)),'nissan.patrol'),
-                (carla.Transform(carla.Location(289.7, -198, 0.22), carla.Rotation(0, 185, 0)),'seat.leon'),
-                (carla.Transform(carla.Location(290.2, -191, 0.22), carla.Rotation(0, -10, 0)),'audi.etron'),
-                (carla.Transform(carla.Location(298, -201, 0.2), carla.Rotation(0, 177, 0)),'jeep.wrangler_rubicon'),
-                (carla.Transform(carla.Location(299, -211, 0.2), carla.Rotation(0, 185, 0)),'mini.cooper_s'),
-                (carla.Transform(carla.Location(280.9, -195, 0.28), carla.Rotation(0, -5, 0)),'toyota.prius')]
+other_parked = [(carla.Transform(carla.Location(280, -201, 0.25), carla.Rotation(0, 188, 0)),'volkswagen.t2_2021', "50,150,180"),
+                (carla.Transform(carla.Location(290.2, -201.5, 0.22)),'nissan.patrol', "170,170,190"),
+                (carla.Transform(carla.Location(289.7, -198, 0.22), carla.Rotation(0, 185, 0)),'seat.leon', "10,10,0"),
+                (carla.Transform(carla.Location(290.2, -191, 0.22), carla.Rotation(0, -10, 0)),'audi.etron', "120,30,30"),
+                (carla.Transform(carla.Location(298, -201, 0.2), carla.Rotation(0, 177, 0)),'jeep.wrangler_rubicon', "25,100,65"),
+                (carla.Transform(carla.Location(280.5, -191.5, 0.3), carla.Rotation(0, 188, 0)),'mini.cooper_s',"80,180,100"),
+                (carla.Transform(carla.Location(280.9, -195, 0.28), carla.Rotation(0, -5, 0)),'toyota.prius', "40,30,65")]
 
 # WEATHER AND TIME OF DAY OPTIONS
-common_weather = {'sun_azimuth_angle': -110}
+common_weather = {'sun_azimuth_angle': 80}
 night = {'sun_altitude_angle': -3}  # dusk
-day = {'sun_altitude_angle': 10}  # afternoon, sun in horizon
+day = {'sun_altitude_angle': 30,
+       'cloudiness': 70}  # afternoon, sun in horizon
 clear = {}
 fog = {'precipitation_deposits': 70,
-       'fog_density': 85,
-       'cloudiness': 100}
+       'fog_density': 100,
+       'cloudiness': 100,
+       'scattering_intensity': 100}
 time_of_day = {'day': day, 'night': night}
 clarity = {'clear': clear, 'fog': fog}
 # PEDESTRIAN BLUEPRINTS
-pedestrian_blueprints = {'child': world.get_blueprint_library().find(f'walker.pedestrian.0010'),
+pedestrian_blueprints = {'child': world.get_blueprint_library().find(f'walker.pedestrian.0012'),
                          'adult': world.get_blueprint_library().find(f'walker.pedestrian.0028')}
 
 # SENSOR & YOLO  (Initial loading is slow - so only do it once)
 RESOLUTION = 1280
-perception_model = YOLODetector(img_size=RESOLUTION, conf_threshold=0.87)
-# perception_model = None
+perception_model = YOLODetector(img_size=RESOLUTION, conf_threshold=0.94)
+
 
 def yolo_predict(image):
     prediction = perception_model.detect(image)
@@ -80,44 +68,6 @@ def yolo_predict(image):
     else:
         return False, max(person_probs)
 
-"""
-def main(actor_list):
-    world.tick()
-    initial_time = world.get_snapshot().elapsed_seconds
-    simulator_time = initial_time
-    ego = actor_list[0]
-    ped = actor_list[1]
-    # ego controller
-    ego_cruise_control = AEBCruise(ego, target_speed=8, target_yaw=90)
-    carla_utils.frame_counter = -1
-    current_frame = 0
-    while (simulator_time - initial_time)<EPISODE_LENGTH:
-        try:
-            world.tick()
-            # COLLECT DATA
-            simulator_time = world.get_snapshot().elapsed_seconds
-            time_trace.append(round(simulator_time-initial_time, 3))
-            update_actor_data(ego, ego_data, x_offset=X_OFFSET, y_offset=Y_OFFSET)
-            update_actor_data(ped, ped_data, x_offset=X_OFFSET, y_offset=Y_OFFSET)
-            # PROCESS FOR NEXT FRAME
-            while current_frame != carla_utils.frame_counter:
-                time.sleep(0.01)
-            current_frame += 1
-            cam_img = carla_utils.array_output
-            ped_in_sight, prob = yolo_predict(cam_img)
-            print(f'Pedestrian In Sight: {ped_in_sight}   Prob: {prob}')
-            ego_cruise_control.control(emergency_brake=ped_in_sight)
-            walk(ped, 1.4)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speed
-            world.get_spectator().set_transform(spectator_camera_transform(ego))
-            # print(f'Ego Speed: {ego.get_velocity().length():.2f} m/s    Yaw: {ego.get_transform().rotation.yaw:.2f} ')
-            continue
-        except KeyboardInterrupt:
-            print('\n Destroying all Actors')
-            for actor in actor_list:
-                carla.command.DestroyActor(actor)
-            client.reload_world()
-            break
-"""
 
 def update_actor_data(actor, actor_data, prefix='', x_offset=0, y_offset=0):
     actor_data[prefix+'x'].append(actor.get_location().x - x_offset)
@@ -148,19 +98,19 @@ def play_scenario(world, ego_speed=7, day_time='night',
     actors = []
     # EGO
     ego_init = carla.Transform(carla.Location(X_OFFSET, Y_OFFSET - 50, 0.1), carla.Rotation(0, 90, 0))
-    ego = spawn_vehicle(world, ego_init, "mercedes.coupe_2020")
+    ego = spawn_vehicle(world, ego_init, "mercedes.coupe_2020", "25,15,25")
     actors.append(ego)
     # ego controller
     ego_cruise_control = AEBCruise(ego, target_speed=ego_speed, target_yaw=90)
     # Pedestrian
     # ped_init = carla.Transform(carla.Location(302, -194, 0.2), carla.Rotation(0,180,0))
-    ped_init = carla.Transform(carla.Location(X_OFFSET+3.7, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
+    ped_init = carla.Transform(carla.Location(X_OFFSET+2.7, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
     pedestrian = world.spawn_actor(pedestrian_blueprints[ped_type], ped_init)
     actors.append(pedestrian)
     # Parked cars
     parked_cars = []
-    for park_init, park_model in other_parked:
-        parked_npc = spawn_vehicle(world, park_init, park_model)
+    for park_init, park_model, park_color in other_parked:
+        parked_npc = spawn_vehicle(world, park_init, park_model, park_color)
         parked_cars.append(parked_npc)
         actors.append(parked_npc)
     # command for parked cars (to be used in loop)
@@ -188,6 +138,8 @@ def play_scenario(world, ego_speed=7, day_time='night',
     carla_utils.detected_crash = False
     current_frame = 0
     ped_moved_by_ego = False
+    first_sighting = True
+    output_data = {'first_sight_dist': -1}
     while ego.get_location().y<ego_limit_y_upper \
             and pedestrian.get_location().x>ped_limit_x_lower \
             and not carla_utils.detected_crash\
@@ -200,7 +152,7 @@ def play_scenario(world, ego_speed=7, day_time='night',
         update_actor_data(ego, ego_data, prefix='ego_', x_offset=X_OFFSET, y_offset=Y_OFFSET)
         update_actor_data(pedestrian, ped_data, prefix='ped_', x_offset=X_OFFSET, y_offset=Y_OFFSET)
         if abs(pedestrian.get_location().y - Y_OFFSET) > 0.02:
-            print(f'collision detector: {carla_utils.detected_crash} , Ped offset: {pedestrian.get_location().y - Y_OFFSET:.2f}')
+            # print(f'collision detector: {carla_utils.detected_crash} , Ped offset: {pedestrian.get_location().y - Y_OFFSET:.2f}')
             ped_moved_by_ego = True
         # PROCESS FOR NEXT FRAME
         while current_frame != carla_utils.frame_counter:
@@ -208,14 +160,20 @@ def play_scenario(world, ego_speed=7, day_time='night',
         current_frame += 1
         cam_img = carla_utils.array_output
         ped_in_sight, prob = yolo_predict(cam_img)
-        ego_ttc = abs((ego.get_location().y - Y_OFFSET+2.337)/(ego.get_velocity().y + 0.01))
-        # print(f'Time: {simulator_time-initial_time:.2f}   Ped x {pedestrian.get_location().x - X_OFFSET:.3f}')
-        #if 3<ego_ttc<4.2:
-        #    print(f'Time: {simulator_time - initial_time:.2f}   Ego ttc: {ego_ttc:.3f}')
-        # print(f'Pedestrian In Sight: {ped_in_sight}   Prob: {prob}')
+        # ped_in_sight=False
+
+        ego_dist = abs(ego.get_location().y - Y_OFFSET + 2.337)
+        ego_ttc = abs((ego_dist)/(ego.get_velocity().y + 0.01))
+        #if prob>0:
+        #    print(f'Pedestrian In Sight: {ped_in_sight}   Prob: {prob}')
+        if ped_in_sight and first_sighting:
+            output_data['first_sight_dist'] = ego_dist
+            first_sighting = False
+            im = Image.fromarray(cam_img)
+            im.save(f'images/{day_time}_{visibility}_{ped_type}_speed_{int(ego_speed*3.6)}kph.jpg')
         ego_cruise_control.control(emergency_brake=ped_in_sight)
-        if ego_ttc<2.5:
-            walk(pedestrian, 1.4)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speed
+        if ego_dist<9+ego_speed*0.9:
+            walk(pedestrian, 1.5)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speed
         world.get_spectator().set_transform(spectator_camera_transform(ego))
         for parked_car in parked_cars:
             parked_car.apply_control(brake_command)
@@ -224,11 +182,12 @@ def play_scenario(world, ego_speed=7, day_time='night',
     collision_sensor.stop()
     for actor in actors:
         carla.command.DestroyActor(actor)
-    outputs = {'crash': carla_utils.detected_crash or ped_moved_by_ego,
-               'time': time_trace,
-               **ego_data,
-               **ped_data}
-    return outputs
+    output_data['crash'] = carla_utils.detected_crash or ped_moved_by_ego
+    output_data['time'] = time_trace
+    output_data = {**output_data
+                    **ego_data,
+                    **ped_data}
+    return output_data
 
 
 def save_dict_csv(input_dict, filename):
@@ -243,20 +202,13 @@ if __name__ == "__main__":
     """ SCENARIO VARIATION OPTIONS """
     #
     from os import listdir
-    day_options = ["day", "night"]
+    day_options = ["night"]
     clarity_options = ["clear", "fog"]
-    ped_type_options = ["child", "adult"]
-    ego_speed_options= np.arange(20, 48.2, 0.2)/3.6   # 20 to 50 kph
+    ped_type_options = ["child"]
+    ego_speed_options= np.arange(20, 35, 3)/3.6   # 20 to 50 kph
     # ego_speed_options = np.arange(25, 55, 5) / 3.6  # 20 to 50 kph
     options = [day_options, clarity_options, ped_type_options, ego_speed_options]
-    prev_experiments = [int(f[4:][:-4]) for f in listdir('parking')]
-    if prev_experiments == []:
-        last_experiment = -1
-    else:
-        last_experiment = max(prev_experiments)
     for i, opt in enumerate(itertools.product(*options)):
-        if i<=last_experiment:
-            continue
         scenario_params = {'day_time': opt[0],
                            'visibility': opt[1],
                            'ped_type': opt[2],
@@ -264,8 +216,8 @@ if __name__ == "__main__":
 
         tr = play_scenario(world, **scenario_params)
         scenario_traces = {**scenario_params, **tr}
-        #save_dict_csv(scenario_traces, f'parking/data{i}')
-        print(f'{i}: Time: {opt[0][0]}, Vis: {opt[1][0]}, Ped: {opt[2][0]},  Speed: {opt[3]:.2f}, Crash: {tr["crash"]}')
+        # save_dict_csv(scenario_traces, f'parking/data{i}')
+        print(f'{i}: {opt[0]} {opt[1]} {opt[2]}  s={opt[3]:.2f}, Crash: {tr["crash"]}, 1st Sight: {tr["first_sight_dist"]:.2f}')
         world = client.reload_world()
         world.apply_settings(settings)
 

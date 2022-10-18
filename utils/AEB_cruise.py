@@ -10,6 +10,7 @@ class AEBCruise:
         self.target_yaw = target_yaw  # in absolute world coordinates
         self.speed_controller = PID(kp=speed_kp, kd=speed_kd, ki=speed_ki, base_control=0.4)
         self.steer_controller = PID(kp=steer_kp, kd=steer_kd, ki=steer_ki, base_control=0)
+        self.previous_brake = False
 
     def control(self, emergency_brake=False):
         """
@@ -21,6 +22,8 @@ class AEBCruise:
         steer_control = self.steer_controller.control(self.target_yaw, measured_yaw)
         control_command = carla.VehicleControl()
         if emergency_brake:
+            self.previous_brake = True
+        if self.previous_brake:
             control_command.throttle = 0
             control_command.brake = 1.0
         else:
