@@ -19,7 +19,7 @@ world.apply_settings(settings)
 # carla_map = world.get_map()
 # EPISODE ENDING CONDITIONS
 EPISODE_LENGTH = 20
-PED_LIMIT_X = 282.5 # lower
+PED_LIMIT_X = 281 # lower
 EGO_LIMIT_Y = -185 # upper
 # COORDINATE OFFSETS
 X_OFFSET = 286
@@ -52,7 +52,7 @@ pedestrian_blueprints = {'child': world.get_blueprint_library().find(f'walker.pe
 
 # SENSOR & YOLO  (Initial loading is slow - so only do it once)
 RESOLUTION = 1280
-perception_model = YOLODetector(img_size=RESOLUTION, conf_threshold=0.94)
+perception_model = YOLODetector(img_size=RESOLUTION, conf_threshold=0.1)
 
 
 def yolo_predict(image):
@@ -62,7 +62,7 @@ def yolo_predict(image):
         pred = np.zeros((1, 6))
         pred[0, -1] = -1  # to make sure that class is not accidently considered '0'
     # Check if a pedestrian was observed or not
-    person_probs = np.array([pred[i][-2] if pred[i][-1]==0 else -1 for i in range(pred.shape[0])])
+    person_probs = np.array([pred[i][-2] if pred[i][-1]==0 else 0.0 for i in range(pred.shape[0])])
     if 0 in pred[:,-1]:
         return True, max(person_probs)
     else:
@@ -98,14 +98,14 @@ def play_scenario(world, ego_speed=7, day_time='night',
     # spawn actors (ego, camera, parked cars, pedestrian)
     actors = []
     # EGO
-    ego_init = carla.Transform(carla.Location(X_OFFSET, Y_OFFSET - 50, 0.1), carla.Rotation(0, 90, 0))
+    ego_init = carla.Transform(carla.Location(X_OFFSET, Y_OFFSET - 9, 0.3), carla.Rotation(0, 90, 0))
     ego = spawn_vehicle(world, ego_init, "mercedes.coupe_2020", "25,15,25")
     actors.append(ego)
     # ego controller
     ego_cruise_control = AEBCruise(ego, target_speed=ego_speed, target_yaw=90)
     # Pedestrian
     # ped_init = carla.Transform(carla.Location(302, -194, 0.2), carla.Rotation(0,180,0))
-    ped_init = carla.Transform(carla.Location(X_OFFSET+2.7, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
+    ped_init = carla.Transform(carla.Location(X_OFFSET+5.0, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
     pedestrian = world.spawn_actor(pedestrian_blueprints[ped_type], ped_init)
     actors.append(pedestrian)
     # Parked cars
@@ -129,6 +129,7 @@ def play_scenario(world, ego_speed=7, day_time='night',
     ego_data = {'ego_x': [], 'ego_y': [], 'ego_v_x': [], 'ego_v_y': [], 'ego_a_x': [], 'ego_a_y': []}
     ped_data = {'ped_x': [], 'ped_y': [], 'ped_v_x': [], 'ped_v_y': [], 'ped_a_x': [], 'ped_a_y': []}
     time_trace = []
+    detection_prob_trace = []
     #
     # SCENARIO SIMULATION
     #
@@ -161,18 +162,17 @@ def play_scenario(world, ego_speed=7, day_time='night',
         current_frame += 1
         cam_img = carla_utils.array_output
         ped_in_sight, prob = yolo_predict(cam_img)
-        # ped_in_sight=False
+
+        detection_prob_trace.append(prob)
 
         ego_dist = abs(ego.get_location().y - Y_OFFSET + 2.337)
-        ego_ttc = abs((ego_dist)/(ego.get_velocity().y + 0.01))
-        #if prob>0:
-        #    print(f'Pedestrian In Sight: {ped_in_sight}   Prob: {prob}')
+        print(f'{current_frame}::   Prob:{int(prob*100)}   Ped_x: {pedestrian.get_location().x-X_OFFSET:.3f}')
         if ped_in_sight and first_sighting:
             output_data['first_sight_dist'] = ego_dist
             first_sighting = False
-            if im_save:
-                im = Image.fromarray(cam_img)
-                im.save(f'images/{day_time}_{visibility}_{ped_type}_speed_{int(ego_speed*3.6)}kph.jpg')
+        if im_save:
+            im = Image.fromarray(cam_img)
+            im.save(f'yolo_test/frame{current_frame}_prob{int(prob*100)}.jpg')
         ego_cruise_control.control(emergency_brake=ped_in_sight)
         if ego_dist<9+ego_speed*0.9:
             walk(pedestrian, 1.5)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speed
@@ -186,58 +186,33 @@ def play_scenario(world, ego_speed=7, day_time='night',
         carla.command.DestroyActor(actor)
     output_data['crash'] = carla_utils.detected_crash or ped_moved_by_ego
     output_data['time'] = time_trace
+    output_data['prob_trace'] = detection_prob_trace
     output_data = {**output_data,
                     **ego_data,
                     **ped_data}
     return output_data
 
 
-def save_dict_csv(input_dict, filename):
-    # open file for writing, "w" is writing
-    w = csv.writer(open(filename+".csv", "w"))
-    for key, val in input_dict.items():
-        # write every key and value to file
-        w.writerow([key, val])
-
 if __name__ == "__main__":
     #
     """ SCENARIO VARIATION OPTIONS """
     #
-    NUM_PREV_SCENARIOS = 800
-    from os import listdir
-    day_options = ["day", "night"]
-    clarity_options = ["clear", "fog"]
-    ped_type_options = ["child"]
-    ego_speed_options= np.arange(20, 40, 0.1)/3.6   # 20 to 50 kph
-    # ego_speed_options = np.arange(25, 55, 5) / 3.6  # 20 to 50 kph
-    options = [day_options, clarity_options, ped_type_options, ego_speed_options]
-    prev_experiments = [int(f[12:][:-4]) for f in listdir('parking')]
-    #if prev_experiments == []:
-    #    last_experiment = -1
-    #else:
-    #    last_experiment = max(prev_experiments)
-    last_experiment = max(prev_experiments) - NUM_PREV_SCENARIOS
-    for i, opt in enumerate(itertools.product(*options)):
-        if i<=last_experiment:
-            continue
-        scenario_params = {'day_time': opt[0],
-                           'visibility': opt[1],
-                           'ped_type': opt[2],
-                           'ego_speed': opt[3]}
+    import matplotlib.pyplot as plt
+    scenario_params = {'day_time': 'day',
+                       'visibility': 'clear',
+                       'ped_type': 'adult',
+                       'ego_speed': 0.0}
 
-        tr = play_scenario(world, **scenario_params)
-        scenario_traces = {**scenario_params, **tr}
-        save_dict_csv(scenario_traces, f'parking/disttrigger_{i+NUM_PREV_SCENARIOS}')
-        print(f'{i+NUM_PREV_SCENARIOS}: {opt[0]} {opt[1]} {opt[2]}  s={opt[3]:.2f}, Crash: {tr["crash"]}, 1st Sight: {tr["first_sight_dist"]:.2f}')
-        world = client.reload_world()
-        world.apply_settings(settings)
+    tr = play_scenario(world, **scenario_params, im_save=True)
+    ped_pos = -np.array(tr['ped_x'])
+    prob_yolo = tr['prob_trace']
+    plt.plot(ped_pos, prob_yolo, 'b.')
+    plt.axis([-4, 4, 0, 1])
+    plt.ylabel('Detection Probability')
+    plt.xlabel('Pedestrian Position')
+    plt.savefig('yolo_ped_probability.png', bbox_inches='tight')
+    # plt.show()
+    world = client.reload_world()
+    world.apply_settings(settings)
 
 
-# LEGACY JUNK
-"""
-def accelerate(vehicle, accel):
-    control_command = carla.VehicleControl()
-    control_command.throttle = accel
-    control_command.steer = 0.0
-    vehicle.apply_control(control_command)
-"""

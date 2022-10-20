@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 # find all experiment numbers available
 experiments = [int(f[4:][:-4]) for f in listdir('parking')]
-directory = f'parking/'
+directory = f'parking_originaldata/'
 
 # value options for different variables
 day_options = ["day", "night"]

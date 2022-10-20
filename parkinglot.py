@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
         tr = play_scenario(world, **scenario_params)
         scenario_traces = {**scenario_params, **tr}
-        #save_dict_csv(scenario_traces, f'parking/data{i}')
+        #save_dict_csv(scenario_traces, f'parking_originaldata/data{i}')
         print(f'{i}: Time: {opt[0][0]}, Vis: {opt[1][0]}, Ped: {opt[2][0]},  Speed: {opt[3]:.2f}, Crash: {tr["crash"]}')
         world = client.reload_world()
         world.apply_settings(settings)
