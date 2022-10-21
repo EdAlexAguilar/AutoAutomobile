@@ -103,6 +103,8 @@ def play_scenario(world, ego_speed=7, day_time='night',
     actors.append(ego)
     # ego controller
     ego_cruise_control = AEBCruise(ego, target_speed=ego_speed, target_yaw=90)
+    if day_time == "night":
+        ego.set_light_state(carla.VehicleLightState.LowBeam)
     # Pedestrian
     # ped_init = carla.Transform(carla.Location(302, -194, 0.2), carla.Rotation(0,180,0))
     ped_init = carla.Transform(carla.Location(X_OFFSET+2.7, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
@@ -203,20 +205,18 @@ if __name__ == "__main__":
     #
     """ SCENARIO VARIATION OPTIONS """
     #
-    NUM_PREV_SCENARIOS = 800
     from os import listdir
-    day_options = ["day", "night"]
+    day_options = ["night"]
     clarity_options = ["clear", "fog"]
-    ped_type_options = ["child"]
+    ped_type_options = ["adult", "child"]
     ego_speed_options= np.arange(20, 40, 0.1)/3.6   # 20 to 50 kph
     # ego_speed_options = np.arange(25, 55, 5) / 3.6  # 20 to 50 kph
     options = [day_options, clarity_options, ped_type_options, ego_speed_options]
-    prev_experiments = [int(f[12:][:-4]) for f in listdir('parking')]
-    #if prev_experiments == []:
-    #    last_experiment = -1
-    #else:
-    #    last_experiment = max(prev_experiments)
-    last_experiment = max(prev_experiments) - NUM_PREV_SCENARIOS
+    prev_experiments = [int(f[19:][:-4]) for f in listdir('parking')]
+    if prev_experiments == []:
+        last_experiment = -1
+    else:
+        last_experiment = max(prev_experiments)
     for i, opt in enumerate(itertools.product(*options)):
         if i<=last_experiment:
             continue
@@ -227,8 +227,8 @@ if __name__ == "__main__":
 
         tr = play_scenario(world, **scenario_params)
         scenario_traces = {**scenario_params, **tr}
-        save_dict_csv(scenario_traces, f'parking/disttrigger_{i+NUM_PREV_SCENARIOS}')
-        print(f'{i+NUM_PREV_SCENARIOS}: {opt[0]} {opt[1]} {opt[2]}  s={opt[3]:.2f}, Crash: {tr["crash"]}, 1st Sight: {tr["first_sight_dist"]:.2f}')
+        save_dict_csv(scenario_traces, f'parking/disttrigger_lights_{i}')
+        print(f'{i}: {opt[0]} {opt[1]} {opt[2]}  s={opt[3]:.2f}, Crash: {tr["crash"]}, 1st Sight: {tr["first_sight_dist"]:.2f}')
         world = client.reload_world()
         world.apply_settings(settings)
 

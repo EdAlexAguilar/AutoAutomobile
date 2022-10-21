@@ -98,14 +98,16 @@ def play_scenario(world, ego_speed=7, day_time='night',
     # spawn actors (ego, camera, parked cars, pedestrian)
     actors = []
     # EGO
-    ego_init = carla.Transform(carla.Location(X_OFFSET, Y_OFFSET - 9, 0.3), carla.Rotation(0, 90, 0))
+    ego_init = carla.Transform(carla.Location(X_OFFSET, Y_OFFSET - 7.5, 0.3), carla.Rotation(0, 90, 0))
     ego = spawn_vehicle(world, ego_init, "mercedes.coupe_2020", "25,15,25")
     actors.append(ego)
     # ego controller
     ego_cruise_control = AEBCruise(ego, target_speed=ego_speed, target_yaw=90)
+    if day_time == "night":
+        ego.set_light_state(carla.VehicleLightState.LowBeam)
     # Pedestrian
     # ped_init = carla.Transform(carla.Location(302, -194, 0.2), carla.Rotation(0,180,0))
-    ped_init = carla.Transform(carla.Location(X_OFFSET+5.0, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
+    ped_init = carla.Transform(carla.Location(X_OFFSET+4.0, Y_OFFSET, 0.25), carla.Rotation(0, 180, 0))
     pedestrian = world.spawn_actor(pedestrian_blueprints[ped_type], ped_init)
     actors.append(pedestrian)
     # Parked cars
@@ -141,6 +143,7 @@ def play_scenario(world, ego_speed=7, day_time='night',
     current_frame = 0
     ped_moved_by_ego = False
     first_sighting = True
+    first_hc_sighting = True
     output_data = {'first_sight_dist': -1}
     while ego.get_location().y<ego_limit_y_upper \
             and pedestrian.get_location().x>ped_limit_x_lower \
@@ -166,13 +169,15 @@ def play_scenario(world, ego_speed=7, day_time='night',
         detection_prob_trace.append(prob)
 
         ego_dist = abs(ego.get_location().y - Y_OFFSET + 2.337)
-        print(f'{current_frame}::   Prob:{int(prob*100)}   Ped_x: {pedestrian.get_location().x-X_OFFSET:.3f}')
+        if prob>0.94 and first_hc_sighting:
+            print(f'{current_frame}::   Prob:{int(prob*100)}   Ped_x: {pedestrian.get_location().x-X_OFFSET:.3f}')
+            first_hc_sighting = False
         if ped_in_sight and first_sighting:
             output_data['first_sight_dist'] = ego_dist
             first_sighting = False
-        if im_save:
+        if im_save and prob>0.7 and current_frame%4==0:
             im = Image.fromarray(cam_img)
-            im.save(f'yolo_test/frame{current_frame}_prob{int(prob*100)}.jpg')
+            im.save(f'yolo_test/{visibility}{day_time}{ped_type}_frame{current_frame}_prob{int(prob*100)}.jpg')
         ego_cruise_control.control(emergency_brake=ped_in_sight)
         if ego_dist<9+ego_speed*0.9:
             walk(pedestrian, 1.5)  # from wikipedia https://en.wikipedia.org/wiki/Preferred_walking_speed
@@ -198,16 +203,27 @@ if __name__ == "__main__":
     """ SCENARIO VARIATION OPTIONS """
     #
     import matplotlib.pyplot as plt
-    scenario_params = {'day_time': 'day',
-                       'visibility': 'clear',
+    scenario_params = {'day_time': 'night',
+                       'visibility': 'fog',
                        'ped_type': 'adult',
                        'ego_speed': 0.0}
 
     tr = play_scenario(world, **scenario_params, im_save=True)
-    ped_pos = -np.array(tr['ped_x'])
-    prob_yolo = tr['prob_trace']
-    plt.plot(ped_pos, prob_yolo, 'b.')
-    plt.axis([-4, 4, 0, 1])
+    # Plot yolo probs
+    ped_pos_a = -np.array(tr['ped_x'])
+    prob_yolo_a = tr['prob_trace']
+    world = client.reload_world()
+    world.apply_settings(settings)
+
+    scenario_params['ped_type']='child'
+    tr = play_scenario(world, **scenario_params, im_save=True)
+
+    ped_pos_c = -np.array(tr['ped_x'])
+    prob_yolo_c = tr['prob_trace']
+
+    plt.plot(ped_pos_a, prob_yolo_a, 'b.')
+    plt.plot(ped_pos_c, prob_yolo_c, 'k.')
+    plt.axis([-4, 4, 0.75, 1])
     plt.ylabel('Detection Probability')
     plt.xlabel('Pedestrian Position')
     plt.savefig('yolo_ped_probability.png', bbox_inches='tight')
